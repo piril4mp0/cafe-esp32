@@ -8,7 +8,7 @@
 constexpr char WIFI_SSID[] = "Murilo's Samsung Galaxy A57 5G";
 constexpr char WIFI_PASSWORD[] = "euamoaDio";
 // localhost no ESP32 aponta para a própria placa, não para o computador.
-constexpr char AUTH_URL[] = "http://10.116.16.150:8080/cafes/autorizar";
+constexpr char AUTH_URL[] = "http://10.98.82.150:8080/cafes/autorizar";
 
 // RC522 conectado à LILYGO T3 V1.6.1 (alimentação em 3,3 V).
 constexpr uint8_t RFID_RST = 23;
@@ -51,6 +51,7 @@ bool autorizarCartao(const String& idCartao) {
     Serial.printf("Falha no POST: %s\n", HTTPClient::errorToString(status).c_str());
   }
   if (status < 200 || status >= 300) {
+    
     http.end();
     return false;
   }
@@ -60,6 +61,9 @@ bool autorizarCartao(const String& idCartao) {
   cJSON* json = cJSON_ParseWithOpts(resposta.c_str(), nullptr, true);
   const cJSON* campo = cJSON_GetObjectItemCaseSensitive(json, "autorizado");
   const bool autorizado = cJSON_IsTrue(campo);
+  if(autorizado  == false){
+  Serial.printf("POST /cafes/autorizar: Não autorizado\n");
+  } 
   cJSON_Delete(json);
   return autorizado;
 }
@@ -84,7 +88,7 @@ void setup() {
 
 void loop() {
   if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) {
-    delay(20);
+    delay(50);
     return;
   }
 
