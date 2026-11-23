@@ -2,6 +2,7 @@
 #include <MFRC522.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <cJSON.h>
 
 // Preencha com os dados da rede e o IP do computador que roda o servidor.
 constexpr char WIFI_SSID[] = "Murilo's Samsung Galaxy A57 5G";
@@ -21,21 +22,26 @@ constexpr unsigned long BUZZER_DURATION_MS = 1000;
 
 MFRC522 rfid(RFID_SS, RFID_RST);
 
-void autorizarCartao(const String& idCartao) {
+bool autorizarCartao(const String& idCartao) {
+  // valida se tem conexao wifi
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("Sem Wi-Fi. Cartao nao enviado.");
-    return;
+    return false;
   }
 
+  //inicializa client wifi e http
   WiFiClient client;
   HTTPClient http;
+
+  // tenta se conectar ao servidor, com timeout de 3s e timeout de resposta de 5s
   http.setConnectTimeout(3000);
   http.setTimeout(5000);
   if (!http.begin(client, AUTH_URL)) {
     Serial.println("Nao foi possivel iniciar a requisicao HTTP.");
-    return;
+    return false;
   }
 
+  // monta payload e envia requisicao POST
   http.addHeader("Content-Type", "application/json");
   const String payload = String("{\"id_cartao\":\"") + idCartao + "\"}";
   const int status = http.POST(payload);
@@ -44,7 +50,18 @@ void autorizarCartao(const String& idCartao) {
   } else {
     Serial.printf("Falha no POST: %s\n", HTTPClient::errorToString(status).c_str());
   }
+  if (status < 200 || status >= 300) {
+    http.end();
+    return false;
+  }
+
+  const String resposta = http.getString();
   http.end();
+  cJSON* json = cJSON_ParseWithOpts(resposta.c_str(), nullptr, true);
+  const cJSON* campo = cJSON_GetObjectItemCaseSensitive(json, "autorizado");
+  const bool autorizado = cJSON_IsTrue(campo);
+  cJSON_Delete(json);
+  return autorizado;
 }
 
 void setup() {
@@ -71,9 +88,6 @@ void loop() {
     return;
   }
 
-  // Emite um toque por 1 segundo sem bloquear a leitura do cartão.
-  tone(BUZZER_PIN, BUZZER_FREQUENCY_HZ, BUZZER_DURATION_MS);
-
   String idCartao;
   idCartao.reserve(rfid.uid.size * 3);
   for (byte i = 0; i < rfid.uid.size; ++i) {
@@ -89,5 +103,7 @@ void loop() {
   rfid.PICC_HaltA();
   rfid.PCD_StopCrypto1();
 
-  autorizarCartao(idCartao);
+  if (autorizarCartao(idCartao)) {
+    tone(BUZZER_PIN, BUZZER_FREQUENCY_HZ, BUZZER_DURATION_MS);
+  }
 }
